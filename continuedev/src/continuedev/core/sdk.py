@@ -89,6 +89,20 @@ class ContinueSDK(AbstractContinueSDK):
         self.__autopilot = autopilot
         self.models = Models(self)
         self.context = autopilot.context
+        self.config = self._load_config()
+
+    config: ContinueConfig
+
+    def _load_config(self) -> ContinueConfig:
+        dir = self.ide.workspace_directory
+        yaml_path = os.path.join(dir, '.continue', 'config.yaml')
+        json_path = os.path.join(dir, '.continue', 'config.json')
+        if os.path.exists(yaml_path):
+            return load_config(yaml_path)
+        elif os.path.exists(json_path):
+            return load_config(json_path)
+        else:
+            return load_global_config()
 
     @property
     def history(self) -> History:
@@ -166,18 +180,6 @@ class ContinueSDK(AbstractContinueSDK):
     async def get_user_secret(self, env_var: str, prompt: str) -> str:
         return await self.ide.getUserSecret(env_var)
 
-    @property
-    def config(self) -> ContinueConfig:
-        dir = self.ide.workspace_directory
-        yaml_path = os.path.join(dir, '.continue', 'config.yaml')
-        json_path = os.path.join(dir, '.continue', 'config.json')
-        if os.path.exists(yaml_path):
-            return load_config(yaml_path)
-        elif os.path.exists(json_path):
-            return load_config(json_path)
-        else:
-            return load_global_config()
-
     def get_code_context(self, only_editing: bool = False) -> List[RangeInFileWithContents]:
         context = list(filter(lambda x: x.editing, self.__autopilot._highlighted_ranges)
                        ) if only_editing else self.__autopilot._highlighted_ranges
@@ -202,14 +204,14 @@ class ContinueSDK(AbstractContinueSDK):
 
         preface = "The following code is highlighted"
 
+        # If no higlighted ranges, use first file as context
         if len(highlighted_code) == 0:
             preface = "The following file is open"
-            # Get the full contents of all open files
-            files = await self.ide.getOpenFiles()
-            if len(files) > 0:
-                content = await self.ide.readFile(files[0])
+            visible_files = await self.ide.getVisibleFiles()
+            if len(visible_files) > 0:
+                content = await self.ide.readFile(visible_files[0])
                 highlighted_code = [
-                    RangeInFileWithContents.from_entire_file(files[0], content)]
+                    RangeInFileWithContents.from_entire_file(visible_files[0], content)]
 
         for rif in highlighted_code:
             msg = ChatMessage(content=f"{preface} ({rif.filepath}):\n```\n{rif.contents}\n```",
